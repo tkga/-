@@ -1,0 +1,7 @@
+{
+  "name": "driver-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "description": "สมุดบัญชีคนขับ — จดรายรับ-รายจ่ายคนขับแกร็ป",
+  "scripts": { "test": "node --test tests/logic.test.js", "start": "python3 -m http.server 8000" }
+}
