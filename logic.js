@@ -35,6 +35,11 @@
   };
   var FIXED_PRESETS = ['ผ่อนรถ', 'ประกันภัย', 'ภาษีรถ/พ.ร.บ.', 'ค่าเช่ารถ', 'ค่าโทรศัพท์'];
   var DEP_LABEL = 'ค่าเสื่อมรถ (ต่อ กม.)';
+  // หมวดที่นับเป็น "1 เที่ยว" (ทิป/โบนัสไม่นับ)
+  var TRIP_CATEGORIES = ['รับผู้โดยสาร', 'ส่งอาหาร', 'ส่งพัสดุ'];
+  function isTrip(e) {
+    return e.type === 'income' && e.source === 'grab' && TRIP_CATEGORIES.indexOf(e.category) >= 0;
+  }
 
   /* ---------- ตัวช่วยทั่วไป ---------- */
   function num(x) { x = parseFloat(x); return isFinite(x) ? x : 0; }
@@ -130,6 +135,12 @@
         note: str(e.note, 200)
       };
       if (type === 'income') entry.pay = e.pay === 'transfer' ? 'transfer' : 'cash';
+      if (isTrip(entry)) {
+        var km = round2(Math.max(0, num(e.km)));
+        var hrs = Math.round(Math.max(0, num(e.hours)) * 10000) / 10000;
+        if (km > 0) entry.km = km;
+        if (hrs > 0) entry.hours = hrs;
+      }
       s.entries.push(entry);
     });
 
@@ -180,7 +191,9 @@
         gameIncome: 0, gameExpense: 0, otherIncome: 0,
         personalExpense: 0, incomeAll: 0, cashAll: 0
       };
+      var eTrips = 0, eHours = 0, eKm = 0;
       list.forEach(function (e) {
+        if (isTrip(e)) { eTrips++; eHours += num(e.hours); eKm += num(e.km); }
         if (e.type === 'income') {
           r.incomeAll += e.amount;
           if (e.pay === 'cash') r.cashAll += e.amount;
@@ -197,7 +210,12 @@
       });
 
       var rec = state.days[date] || {};
-      r.trips = num(rec.trips); r.hours = num(rec.hours); r.km = num(rec.km);
+      // ข้อมูลการวิ่ง = รวมจากรายการแกร็ปของวัน (+ ค่าเก่าที่เคยกรอกมือ ถ้ามี)
+      r.legacy = { trips: num(rec.trips), hours: num(rec.hours), km: num(rec.km) };
+      r.hasLegacy = r.legacy.trips > 0 || r.legacy.hours > 0 || r.legacy.km > 0;
+      r.trips = r.legacy.trips + eTrips;
+      r.hours = r.legacy.hours + eHours;
+      r.km = r.legacy.km + eKm;
 
       r.charged = first !== null && date >= first && date <= today;
       r.fixedGrab = 0; r.fixedPersonal = 0;
@@ -315,10 +333,11 @@
   function entriesCsv(state, ym) {
     var rows = state.entries.filter(function (e) { return e.date.slice(0, 7) === ym; })
       .sort(function (a, b) { return (a.date + a.time) < (b.date + b.time) ? -1 : 1; });
-    var out = [csvRow(['วันที่', 'เวลา', 'ประเภท', 'ช่องทาง', 'หมวด', 'จำนวนเงิน', 'วิธีรับเงิน', 'บันทึก'])];
+    var out = [csvRow(['วันที่', 'เวลา', 'ประเภท', 'ช่องทาง', 'หมวด', 'จำนวนเงิน', 'วิธีรับเงิน', 'กม.', 'นาที', 'บันทึก'])];
     rows.forEach(function (e) {
       out.push(csvRow([e.date, e.time, e.type === 'income' ? 'รายรับ' : 'รายจ่าย', SOURCES[e.source].label, e.category,
-        f2(e.amount), e.type === 'income' ? (e.pay === 'cash' ? 'เงินสด' : 'โอน') : '', e.note]));
+        f2(e.amount), e.type === 'income' ? (e.pay === 'cash' ? 'เงินสด' : 'โอน') : '',
+        e.km || '', e.hours ? Math.round(e.hours * 60) : '', e.note]));
     });
     return out.join('\r\n');
   }
@@ -326,6 +345,7 @@
   return {
     SOURCES: SOURCES, INCOME_SOURCES: INCOME_SOURCES, EXPENSE_SOURCES: EXPENSE_SOURCES,
     CATEGORIES: CATEGORIES, FIXED_PRESETS: FIXED_PRESETS, DEP_LABEL: DEP_LABEL,
+    TRIP_CATEGORIES: TRIP_CATEGORIES, isTrip: isTrip,
     num: num, round2: round2, uid: uid,
     pad: pad, toYmd: toYmd, parseYmd: parseYmd, isYmd: isYmd, addDays: addDays,
     daysInMonth: daysInMonth, daysInYear: daysInYear,

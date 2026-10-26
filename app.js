@@ -69,7 +69,7 @@
     date: today,
     month: { y: +today.slice(0, 4), m: +today.slice(5, 7) },
     tableMode: 'grab',
-    form: { type: 'income', source: 'grab', category: 'รับผู้โดยสาร', pay: 'cash', amount: '', note: '', editId: null },
+    form: { type: 'income', source: 'grab', category: 'รับผู้โดยสาร', pay: 'cash', amount: '', km: '', min: '', note: '', editId: null },
     fixedForm: { name: '', amount: '', every: 'month', scope: 'grab' }
   };
 
@@ -109,10 +109,18 @@
   }
 
   function resetForm() {
-    Object.assign(ui.form, { amount: '', note: '', editId: null });
+    Object.assign(ui.form, { amount: '', km: '', min: '', note: '', editId: null });
   }
 
   const payLabel = (source, pay) => (pay === 'cash' ? 'เงินสด' : source === 'grab' ? 'โอนเข้าแอป' : 'โอน/เข้าบัญชี');
+
+  const formIsTrip = (f) => f.type === 'income' && f.source === 'grab' && L.TRIP_CATEGORIES.indexOf(f.category) >= 0;
+  function fmtDur(h) {
+    const t = Math.round(h * 60);
+    if (t <= 0) return '0';
+    const hh = Math.floor(t / 60), mm = t % 60;
+    return hh ? `${hh} <small>ชม.</small> ${mm} <small>น.</small>` : `${mm} <small>น.</small>`;
+  }
 
   function dayBar() {
     const d = L.parseYmd(ui.date);
@@ -192,6 +200,10 @@
       <label class="fld"><span>จำนวนเงิน (บาท)</span>
         <div class="money-wrap"><input class="in big" id="f-amount" data-f="amount" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(f.amount)}"></div>
       </label>
+      ${formIsTrip(f) ? `<div><div class="row">
+          <label class="fld"><span>กิโลเมตร (ไม่บังคับ)</span><input class="in" data-f="f-km" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(f.km)}"></label>
+          <label class="fld"><span>เวลาที่ใช้ นาที (ไม่บังคับ)</span><input class="in" data-f="f-min" inputmode="numeric" autocomplete="off" placeholder="0" value="${esc(f.min)}"></label>
+        </div><p class="help" style="margin-top:6px">บันทึกแล้วนับเป็น 1 เที่ยว และรวมกิโลเมตร/เวลาเข้า “ข้อมูลการวิ่ง” ของวันให้อัตโนมัติ</p></div>` : ''}
       ${isInc ? `<div><div class="small muted" style="margin-bottom:6px">รับเงินแบบไหน</div>
         <div class="chips">
           <button type="button" class="chip ${f.pay === 'cash' ? 'on' : ''}" data-act="pay" data-v="cash">เงินสด</button>
@@ -213,7 +225,7 @@
       <div class="t">${esc(e.time || '')}</div>
       <div>
         <div class="name"><span class="badge ${e.source}">${SRC[e.source].label}</span>${esc(e.category)}</div>
-        ${e.note ? `<div class="note">${esc(e.note)}</div>` : ''}
+        ${(() => { const x = []; if (e.km) x.push(`${L.plain(e.km, 1)} กม.`); if (e.hours) x.push(`${Math.round(e.hours * 60)} นาที`); if (e.note) x.push(esc(e.note)); return x.length ? `<div class="note">${x.join(' · ')}</div>` : ''; })()}
       </div>
       <div class="amt ${inc ? 'pos' : 'neg'}">${inc ? '+' : '−'}${M(e.amount)}${inc ? `<span class="pay">${payLabel(e.source, e.pay)}</span>` : ''}</div>
       <div class="acts">
@@ -245,32 +257,29 @@
     const rate = state.settings.depPerKm;
     let hint = '';
     if (r.km > 0 && rate > 0) hint = `หักค่าเสื่อมรถ ${M(r.depreciation)} แล้ว (${L.plain(r.km, 1)} กม. × ${M(rate)})`;
-    else if (!(r.km > 0) && rate > 0) hint = 'กรอกกิโลเมตร เพื่อให้ระบบหักค่าเสื่อมรถให้อัตโนมัติ';
-    return `<div class="grid3" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+    else if (!(r.km > 0) && rate > 0) hint = 'ใส่กิโลเมตรตอนจดรายการแกร็ป เพื่อให้ระบบหักค่าเสื่อมรถให้อัตโนมัติ';
+    const lg = r.legacy;
+    const legacy = r.hasLegacy
+      ? `<p class="help">รวมข้อมูลเดิมที่เคยกรอกมือไว้ (${L.plain(lg.trips, 0)} เที่ยว · ${L.plain(lg.hours, 1)} ชม. · ${L.plain(lg.km, 1)} กม.) <button type="button" class="link u" data-act="clear-legacy">ล้างส่วนนี้</button></p>` : '';
+    return `<div class="grid3">
+        ${cell('จำนวนเที่ยว', L.plain(r.trips, 0))}${cell('ชั่วโมงที่วิ่ง', fmtDur(r.hours))}${cell('กิโลเมตร', L.plain(r.km, 1))}
+      </div>
+      <div class="grid3" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
         ${cell('กำไรต่อชั่วโมง', per(r.hours))}${cell('กำไรต่อกิโลเมตร', per(r.km))}${cell('กำไรต่อเที่ยว', per(r.trips))}
-      </div>${hint ? `<p class="help hint">${hint}</p>` : ''}`;
+      </div>${hint ? `<p class="help hint">${hint}</p>` : ''}${legacy}`;
   }
 
   function dayView() {
     const tip = (!state.entries.length && !state.meta.tipDismissed)
       ? `<div class="tip"><span><b>เริ่มต้นง่ายๆ</b> ไปที่แท็บ “ตั้งค่า” เพิ่มค่าผ่อนรถ/ค่าโทรศัพท์ แล้วกลับมาจดรายการแรกที่นี่ เลือก “ช่องทาง” ให้ตรง (แกร็ป / เกม / อื่นๆ) ตัวเลขจะไม่ปนกัน</span><button type="button" class="link" data-act="dismiss-tip">ปิด</button></div>` : '';
-    const rec = state.days[ui.date] || {};
-    const v = (x) => (x > 0 ? x : '');
     return `${tip}${dayBar()}
       <div id="d-hero">${dayHero()}</div>
       <h2 class="sec" id="d-form-title">${ui.form.editId ? 'แก้ไขรายการ' : 'เพิ่มรายการ'}</h2>
       <div id="d-form">${dayForm()}</div>
       <h2 class="sec">รายการของวัน</h2>
       <div id="d-entries">${dayEntries()}</div>
-      <h2 class="sec">ข้อมูลการวิ่ง<small>คิดจากกำไรแกร็ป</small></h2>
-      <div class="card real">
-        <div class="grid3">
-          <label class="fld"><span>จำนวนเที่ยว</span><input class="in" data-f="trips" inputmode="numeric" placeholder="0" value="${v(rec.trips)}"></label>
-          <label class="fld"><span>ชั่วโมงที่วิ่ง</span><input class="in" data-f="hours" inputmode="decimal" placeholder="0" value="${v(rec.hours)}"></label>
-          <label class="fld"><span>กิโลเมตร</span><input class="in" data-f="km" inputmode="decimal" placeholder="0" value="${v(rec.km)}"></label>
-        </div>
-        <div id="d-real">${dayReal()}</div>
-      </div>`;
+      <h2 class="sec">ข้อมูลการวิ่ง<small>รวมจากรายการแกร็ปของวัน</small></h2>
+      <div class="card real"><div id="d-real">${dayReal()}</div></div>`;
   }
 
   const setHtml = (sel, html) => { const el = $(sel); if (el) el.innerHTML = html; };
@@ -297,10 +306,15 @@
     }
     const base = { type: f.type, source: f.source, category: f.category, amount, note: f.note.trim().slice(0, 200) };
     if (f.type === 'income') base.pay = f.pay;
+    if (formIsTrip(f)) {
+      const km = parseFloat(f.km), mn = parseFloat(f.min);
+      if (km > 0) base.km = L.round2(km);
+      if (mn > 0) base.hours = Math.round((mn / 60) * 10000) / 10000;
+    }
 
     if (f.editId) {
       const e = state.entries.find((x) => x.id === f.editId);
-      if (e) { Object.assign(e, base); if (f.type === 'expense') delete e.pay; }
+      if (e) { delete e.km; delete e.hours; Object.assign(e, base); if (f.type === 'expense') delete e.pay; }
       toast('แก้ไขรายการแล้ว');
     } else {
       const now = new Date();
@@ -317,7 +331,7 @@
   function startEdit(id) {
     const e = state.entries.find((x) => x.id === id);
     if (!e) return;
-    ui.form = { type: e.type, source: e.source, category: e.category, pay: e.pay || 'cash', amount: String(e.amount), note: e.note || '', editId: e.id };
+    ui.form = { type: e.type, source: e.source, category: e.category, pay: e.pay || 'cash', amount: String(e.amount), km: e.km ? String(e.km) : '', min: e.hours ? String(Math.round(e.hours * 60)) : '', note: e.note || '', editId: e.id };
     refreshForm();
     const t = $('#d-form-title');
     if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -334,16 +348,6 @@
       label: 'เลิกทำ',
       fn: () => { state.entries.splice(Math.min(idx, state.entries.length), 0, removed); commit(); refreshCurrent(); }
     });
-  }
-
-  function setReal(field, value) {
-    const v = Number.isFinite(value) && value > 0 ? value : 0;
-    const rec = Object.assign({ trips: 0, hours: 0, km: 0 }, state.days[ui.date]);
-    rec[field] = v;
-    if (!rec.trips && !rec.hours && !rec.km) delete state.days[ui.date];
-    else state.days[ui.date] = rec;
-    commit();
-    refreshDay();
   }
 
   /* =====================================================================
@@ -666,7 +670,7 @@
       if (!confirm(msg)) return;
       stash('before-import');
       state = next;
-      ui.form = { type: 'income', source: 'grab', category: 'รับผู้โดยสาร', pay: 'cash', amount: '', note: '', editId: null };
+      ui.form = { type: 'income', source: 'grab', category: 'รับผู้โดยสาร', pay: 'cash', amount: '', km: '', min: '', note: '', editId: null };
       commit();
       render();
       toast(`นำเข้า ${next.entries.length} รายการแล้ว`);
@@ -728,6 +732,7 @@
       case 'cancel-edit': resetForm(); refreshForm(); break;
       case 'edit-entry': startEdit(id); break;
       case 'del-entry': deleteEntry(id); break;
+      case 'clear-legacy': delete state.days[ui.date]; commit(); refreshDay(); toast('ล้างข้อมูลเดิมของวันนี้แล้ว'); break;
       case 'dismiss-tip': state.meta.tipDismissed = true; commit(); render(); break;
 
       /* รายเดือน */
@@ -783,9 +788,8 @@
     switch (f) {
       case 'amount': t.value = cleanNum(t.value); ui.form.amount = t.value; t.classList.remove('err'); break;
       case 'note': ui.form.note = t.value; break;
-      case 'trips': t.value = t.value.replace(/\D/g, ''); setReal('trips', parseInt(t.value, 10)); break;
-      case 'hours': t.value = cleanNum(t.value); setReal('hours', parseFloat(t.value)); break;
-      case 'km': t.value = cleanNum(t.value); setReal('km', parseFloat(t.value)); break;
+      case 'f-km': t.value = cleanNum(t.value); ui.form.km = t.value; break;
+      case 'f-min': t.value = t.value.replace(/\D/g, ''); ui.form.min = t.value; break;
       case 'target': t.value = cleanNum(t.value); state.settings.target = Math.max(0, L.num(t.value)); commit(); flashSaved('saved-a'); break;
       case 'dep': t.value = cleanNum(t.value); state.settings.depPerKm = Math.max(0, L.num(t.value)); commit(); flashSaved('saved-b'); break;
       case 'fixed-name': ui.fixedForm.name = t.value; t.classList.remove('err'); break;
@@ -803,7 +807,7 @@
   view.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing) return;
     const f = e.target.dataset && e.target.dataset.f;
-    if (f === 'amount' || f === 'note') { e.preventDefault(); submitEntry(); }
+    if (f === 'amount' || f === 'note' || f === 'f-km' || f === 'f-min') { e.preventDefault(); submitEntry(); }
     if (f === 'fixed-name' || f === 'fixed-amount') { e.preventDefault(); addFixed(); }
   });
 
