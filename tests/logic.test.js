@@ -20,7 +20,8 @@ test('ตัวเลขรายเดือนตรงกับแอปเ�
   close(m.best.grabNet, 526.77);
   assert.equal(m.best.date, '2026-10-25');
   close(m.profitPerHour, 512.10 / 11);   // 46.55
-  assert.equal(t.trips, 413);
+  // ข้อมูลทดสอบนี้ใช้ค่าเก่าที่กรอกมือ (413 เที่ยว) + เที่ยวที่นับจากรายการแกร็ป 3 วัน (ทิปไม่นับ) = 416
+  assert.equal(t.trips, 416);
   assert.equal(t.km, 115);
   assert.equal(Math.round(m.costRatio * 100), 61);
 });
@@ -133,4 +134,25 @@ test('CSV: escape และกันสูตร', () => {
   const csv = L.entriesCsv(s, '2026-10');
   assert.ok(csv.includes(`"'=SUM(A1), ""ลูกค้า"""`));
   assert.ok(L.daysCsv(L.createEngine(s, TODAY).month(2026, 10)).split('\r\n').length >= 6);
+});
+
+test('ข้อมูลการวิ่งรวมจากรายการแกร็ป: เที่ยว/กม./เวลา, ทิปไม่นับเที่ยว', () => {
+  const s = L.emptyState();
+  s.fixed = [];
+  const add = (cat, amount, extra) => s.entries.push(Object.assign({ id: L.uid(), date: '2026-10-26', time: '', type: 'income', source: 'grab', category: cat, amount, pay: 'cash', note: '' }, extra || {}));
+  add('รับผู้โดยสาร', 100, { km: 5.5, hours: 0.25 });
+  add('ส่งอาหาร', 60, { km: 3, hours: 0.5 });
+  add('ทิป', 20, { km: 99, hours: 9 });           // ทิปไม่นับเที่ยว และไม่เก็บ กม./เวลา
+  s.entries.push({ id: 'g', date: '2026-10-26', time: '', type: 'income', source: 'game', category: 'ขายไอเท็ม', amount: 50, pay: 'cash', note: '', km: 40 });
+  const n = L.normalize(s);
+  assert.equal(n.entries.find((e) => e.category === 'ทิป').km, undefined);
+  assert.equal(n.entries.find((e) => e.source === 'game').km, undefined);
+  s.settings.depPerKm = 5;
+  const d = L.createEngine(n, '2026-10-26').day('2026-10-26');
+  assert.equal(d.trips, 2);
+  close(d.km, 8.5);
+  close(d.hours, 0.75);
+  close(d.depreciation, 42.5);
+  close(d.grabNet, 180 - 42.5);
+  assert.equal(d.active, true);
 });
